@@ -24027,15 +24027,26 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         @Override
         public boolean onInterceptTouchEvent(MotionEvent ev) {
-            return isVisible && super.onInterceptTouchEvent(ev);
+            if (!isVisible) {
+                return false;
+            }
+            // Если жест видеоплеера уже активен — перехватываем чтобы children не получали events
+            if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isGestureActive()) {
+                return true;
+            }
+            return super.onInterceptTouchEvent(ev);
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isGestureActive()) {
-                return true;
+            if (!isVisible) {
+                return false;
             }
-            return isVisible && PhotoViewer.this.onTouchEvent(event);
+            // Если жест видеоплеера активен — обрабатываем его
+            if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isGestureActive()) {
+                return tw.nekomimi.nekogram.helpers.VideoGesturesHelper.onTouchEvent(PhotoViewer.this, this, event, isCurrentVideo);
+            }
+            return PhotoViewer.this.onTouchEvent(event);
         }
 
         @Override
@@ -24049,6 +24060,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent ev) {
+            // VideoGesturesHelper видит ВСЕ touch events здесь (dispatchTouchEvent всегда вызывается).
+            // Когда жест обнаружен, он возвращает true и event не уходит в children.
             if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.onDispatchTouchEvent(PhotoViewer.this, this, ev, isCurrentVideo)) {
                 return true;
             }

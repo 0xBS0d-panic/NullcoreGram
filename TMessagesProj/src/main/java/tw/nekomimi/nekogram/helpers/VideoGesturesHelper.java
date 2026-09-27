@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.media.AudioManager;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -26,7 +27,27 @@ import org.telegram.ui.PhotoViewer;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
+/**
+ * Обработка жестов видеоплеера (яркость, громкость, перемотка) в PhotoViewer.
+ *
+ * Архитектура (гибридный подход):
+ *
+ * 1. dispatchTouchEvent → onDispatchTouchEvent()
+ *    - Вызывается ВСЕГДА для каждого touch event (даже если child не обработал DOWN).
+ *    - На ACTION_DOWN: сохраняет начальные координаты, возвращает false.
+ *    - На ACTION_MOVE (порог не пройден): возвращает false, event идёт в children / onTouchEvent.
+ *    - На ACTION_MOVE (порог пройден): устанавливает gestureActive=true, ОБРАБАТЫВАЕТ жест, возвращает true.
+ *    - Когда gestureActive=true: обрабатывает жест и возвращает true (event НЕ уходит в super.dispatchTouchEvent).
+ *
+ * 2. onInterceptTouchEvent → isGestureActive()
+ *    - Если жест уже активен, перехватывает touch у children (на случай если child обработал DOWN).
+ *
+ * 3. onTouchEvent → onTouchEvent()
+ *    - Если жест активен, обрабатывает его (для случая когда onInterceptTouchEvent перехватил).
+ */
 public class VideoGesturesHelper {
+
+    private static final String TAG = "VideoGestures";
 
     private static final int GESTURE_NONE = 0;
     private static final int GESTURE_BRIGHTNESS = 1;
@@ -55,8 +76,15 @@ public class VideoGesturesHelper {
         return gestureActive;
     }
 
+    /**
+     * Вызывается из windowView.dispatchTouchEvent() — ПЕРВЫМ в цепочке обработки.
+     * dispatchTouchEvent вызывается ВСЕГДА, даже если mFirstTouchTarget == null.
+     *
+     * Возвращает true → event полностью обработан, super.dispatchTouchEvent не вызывается.
+     * Возвращает false → event проходит стандартную маршрутизацию.
+     */
     public static boolean onDispatchTouchEvent(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, boolean isCurrentVideo) {
-        if (photoViewer == null || windowView == null || !NekoConfig.videoPlayerGestures.Bool() || !isCurrentVideo) {
+        if (!isVideoGesturesAvailable(photoViewer, isCurrentVideo)) {
             return false;
         }
 
@@ -82,33 +110,11 @@ public class VideoGesturesHelper {
                 gestureActive = false;
                 targetSeekPosition = -1;
 
-                Activity activity = photoViewer.getParentActivity();
-                if (activity != null) {
-                    WindowManager.LayoutParams lp = activity.getWindow().getAttributes();
-                    if (lp.screenBrightness >= 0) {
-                        initialBrightness = lp.screenBrightness;
-                    } else {
-                        try {
-                            int sys = Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
-                            initialBrightness = Math.max(0.01f, sys / 255.0f);
-                        } catch (Exception e) {
-                            initialBrightness = 0.5f;
-                        }
-                    }
+                initBrightnessAndVolume(photoViewer);
+                initialPosition = (player != null) ? player.getCurrentPosition() : 0;
 
-                    AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
-                    if (am != null) {
-                        initialVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC);
-                        maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                    }
-                }
-
-                if (player != null) {
-                    initialPosition = player.getCurrentPosition();
-                } else {
-                    initialPosition = 0;
-                }
-                return false;
+                Log.d(TAG, "DOWN: rx=" + rx + " ry=" + ry);
+                return false; // Не перехватываем DOWN — даём стандартной обработке пройти
             }
 
             case MotionEvent.ACTION_MOVE: {
@@ -120,9 +126,9 @@ public class VideoGesturesHelper {
                 float dy = ev.getRawY() - downY;
                 float absDx = Math.abs(dx);
                 float absDy = Math.abs(dy);
-                int threshold = AndroidUtilities.dp(16);
 
                 if (!gestureActive) {
+                    int threshold = AndroidUtilities.dp(16);
                     if (absDx > threshold || absDy > threshold) {
                         if (absDx > absDy) {
                             if (player != null && player.getDuration() > 0) {
@@ -133,21 +139,23 @@ public class VideoGesturesHelper {
                             int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
                             if (downX < screenWidth * 0.5f) {
                                 currentGesture = GESTURE_BRIGHTNESS;
-                                gestureActive = true;
                             } else {
                                 currentGesture = GESTURE_VOLUME;
-                                gestureActive = true;
                             }
+                            gestureActive = true;
                         }
 
                         if (gestureActive) {
+                            Log.d(TAG, "GESTURE DETECTED: type=" + currentGesture);
                             try {
                                 windowView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                             } catch (Exception ignored) {}
 
+                            // Отменяем все стандартные жесты PhotoViewer
                             photoViewer.cancelVideoGestures();
+
+                            // Отправляем CANCEL всем children чтобы они сбросили своё состояние
                             cancelChildrenTouch(windowView);
-                            windowView.requestDisallowInterceptTouchEvent(true);
                         }
                     }
                 }
@@ -156,61 +164,13 @@ public class VideoGesturesHelper {
                     return false;
                 }
 
-                ensureOverlay(windowView);
-                if (overlayView == null) {
-                    return false;
-                }
-
-                int screenHeight = windowView.getHeight() > 0 ? windowView.getHeight() : AndroidUtilities.displaySize.y;
-                int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
-
-                if (currentGesture == GESTURE_BRIGHTNESS) {
-                    Activity activity = photoViewer.getParentActivity();
-                    if (activity != null) {
-                        Window window = activity.getWindow();
-                        WindowManager.LayoutParams lp = window.getAttributes();
-                        float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
-                        float newBrightness = Math.max(0.01f, Math.min(1.0f, initialBrightness + delta));
-                        lp.screenBrightness = newBrightness;
-                        window.setAttributes(lp);
-                        overlayView.showBrightness((int) (newBrightness * 100));
-                    }
-                    return true;
-                } else if (currentGesture == GESTURE_VOLUME) {
-                    Activity activity = photoViewer.getParentActivity();
-                    if (activity != null) {
-                        AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
-                        if (am != null) {
-                            float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
-                            int newVol = Math.max(0, Math.min(maxVolume, Math.round(initialVolume + delta * maxVolume)));
-                            try {
-                                am.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
-                            } catch (Exception ignored) {}
-                            int percent = maxVolume > 0 ? (int) ((newVol / (float) maxVolume) * 100) : 0;
-                            overlayView.showVolume(percent, newVol == 0);
-                        }
-                    }
-                    return true;
-                } else if (currentGesture == GESTURE_SEEK) {
-                    if (player != null) {
-                        long duration = player.getDuration();
-                        if (duration > 0) {
-                            long deltaMs = (long) ((dx / (float) screenWidth) * 90000L);
-                            targetSeekPosition = Math.max(0, Math.min(duration, initialPosition + deltaMs));
-                            long diffSec = (targetSeekPosition - initialPosition) / 1000;
-                            String sign = diffSec >= 0 ? "+" : "";
-                            String diffStr = sign + diffSec + "s";
-                            String timeStr = AndroidUtilities.formatShortDuration((int) (targetSeekPosition / 1000)) +
-                                    " / " + AndroidUtilities.formatShortDuration((int) (duration / 1000));
-                            overlayView.showSeek(diffStr, timeStr, diffSec >= 0);
-                        }
-                    }
-                    return true;
-                }
-                break;
+                // Жест активен — обрабатываем и поглощаем event
+                processGestureMove(photoViewer, windowView, ev, dx, dy);
+                return true;
             }
 
             case MotionEvent.ACTION_UP: {
+                Log.d(TAG, "UP: gestureActive=" + gestureActive);
                 isDownInVideo = false;
                 if (gestureActive) {
                     if (currentGesture == GESTURE_SEEK && targetSeekPosition >= 0 && player != null) {
@@ -241,6 +201,131 @@ public class VideoGesturesHelper {
         }
 
         return false;
+    }
+
+    /**
+     * Вызывается из windowView.onTouchEvent() когда gestureActive == true.
+     * Это для случая, когда onInterceptTouchEvent перехватил touch у children.
+     */
+    public static boolean onTouchEvent(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, boolean isCurrentVideo) {
+        if (!gestureActive || !isVideoGesturesAvailable(photoViewer, isCurrentVideo)) {
+            return false;
+        }
+
+        int action = ev.getActionMasked();
+
+        if (action == MotionEvent.ACTION_MOVE) {
+            float dx = ev.getRawX() - downX;
+            float dy = ev.getRawY() - downY;
+            processGestureMove(photoViewer, windowView, ev, dx, dy);
+            return true;
+        }
+
+        if (action == MotionEvent.ACTION_UP) {
+            VideoPlayer player = photoViewer.getVideoPlayer();
+            if (currentGesture == GESTURE_SEEK && targetSeekPosition >= 0 && player != null) {
+                player.seekTo(targetSeekPosition);
+            }
+            if (overlayView != null) {
+                overlayView.dismiss();
+            }
+            gestureActive = false;
+            currentGesture = GESTURE_NONE;
+            isDownInVideo = false;
+            targetSeekPosition = -1;
+            return true;
+        }
+
+        if (action == MotionEvent.ACTION_CANCEL) {
+            gestureActive = false;
+            currentGesture = GESTURE_NONE;
+            isDownInVideo = false;
+            targetSeekPosition = -1;
+            if (overlayView != null) {
+                overlayView.dismiss();
+            }
+            return true;
+        }
+
+        return true;
+    }
+
+    /**
+     * Обработка движения пальца — общая для onDispatchTouchEvent и onTouchEvent.
+     */
+    private static void processGestureMove(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, float dx, float dy) {
+        ensureOverlay(windowView);
+        if (overlayView == null) {
+            return;
+        }
+
+        int screenHeight = windowView.getHeight() > 0 ? windowView.getHeight() : AndroidUtilities.displaySize.y;
+        int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
+
+        if (currentGesture == GESTURE_BRIGHTNESS) {
+            Activity activity = photoViewer.getParentActivity();
+            if (activity != null) {
+                Window window = activity.getWindow();
+                WindowManager.LayoutParams lp = window.getAttributes();
+                float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
+                float newBrightness = Math.max(0.01f, Math.min(1.0f, initialBrightness + delta));
+                lp.screenBrightness = newBrightness;
+                window.setAttributes(lp);
+                overlayView.showBrightness((int) (newBrightness * 100));
+            }
+        } else if (currentGesture == GESTURE_VOLUME) {
+            Activity activity = photoViewer.getParentActivity();
+            if (activity != null) {
+                AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+                if (am != null) {
+                    float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
+                    int newVol = Math.max(0, Math.min(maxVolume, Math.round(initialVolume + delta * maxVolume)));
+                    try {
+                        am.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
+                    } catch (Exception ignored) {}
+                    int percent = maxVolume > 0 ? (int) ((newVol / (float) maxVolume) * 100) : 0;
+                    overlayView.showVolume(percent, newVol == 0);
+                }
+            }
+        } else if (currentGesture == GESTURE_SEEK) {
+            VideoPlayer player = photoViewer.getVideoPlayer();
+            if (player != null) {
+                long duration = player.getDuration();
+                if (duration > 0) {
+                    long deltaMs = (long) ((dx / (float) screenWidth) * 90000L);
+                    targetSeekPosition = Math.max(0, Math.min(duration, initialPosition + deltaMs));
+                    long diffSec = (targetSeekPosition - initialPosition) / 1000;
+                    String sign = diffSec >= 0 ? "+" : "";
+                    String diffStr = sign + diffSec + "s";
+                    String timeStr = AndroidUtilities.formatShortDuration((int) (targetSeekPosition / 1000)) +
+                            " / " + AndroidUtilities.formatShortDuration((int) (duration / 1000));
+                    overlayView.showSeek(diffStr, timeStr, diffSec >= 0);
+                }
+            }
+        }
+    }
+
+    private static void initBrightnessAndVolume(PhotoViewer photoViewer) {
+        Activity activity = photoViewer.getParentActivity();
+        if (activity != null) {
+            WindowManager.LayoutParams lp = activity.getWindow().getAttributes();
+            if (lp.screenBrightness >= 0) {
+                initialBrightness = lp.screenBrightness;
+            } else {
+                try {
+                    int sys = Settings.System.getInt(activity.getContentResolver(), Settings.System.SCREEN_BRIGHTNESS);
+                    initialBrightness = Math.max(0.01f, sys / 255.0f);
+                } catch (Exception e) {
+                    initialBrightness = 0.5f;
+                }
+            }
+
+            AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                initialVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            }
+        }
     }
 
     private static boolean isHitTopBar(PhotoViewer photoViewer, float ry) {
