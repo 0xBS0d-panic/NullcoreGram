@@ -455,6 +455,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         if (longPressRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
         }
+        if (videoPlayerRewinder != null && videoPlayerRewinder.rewinding) {
+            videoPlayerRewinder.cancelRewind();
+        }
+        if (longVideoPlayerRewinder != null && longVideoPlayerRewinder.rewindCount > 0) {
+            longVideoPlayerRewinder.cancelRewind();
+        }
         draggingDown = false;
         canDragDown = false;
         moving = false;
@@ -19474,7 +19480,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
                 longPressX = ev.getX();
-                AndroidUtilities.runOnUIThread(longPressRunnable, 300);
+                if (!tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo)) {
+                    AndroidUtilities.runOnUIThread(longPressRunnable, 300);
+                }
             } else {
                 AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
             }
@@ -19541,7 +19549,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         return true;
                     }
                 }
-                if (placeProvider.canScrollAway() && currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER && canDragDown && !draggingDown && scale == 1 && dy >= dp(30) && dy / 2 > dx) {
+                if (placeProvider.canScrollAway() && currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER && canDragDown && !draggingDown && scale == 1 && dy >= dp(30) && dy / 2 > dx && !tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo)) {
                     draggingDown = true;
                     hidePressedDrawables();
                     moving = false;
@@ -19561,40 +19569,44 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     float moveDx = moveStartX - ev.getX();
                     float moveDy = moveStartY - ev.getY();
                     if (moving || currentEditMode != EDIT_MODE_NONE || sendPhotoType == SELECT_TYPE_STICKER || scale == 1 && Math.abs(moveDy) + dp(12) < Math.abs(moveDx) || scale != 1) {
-                        if (!moving) {
-                            moveDx = 0;
-                            moveDy = 0;
-                            moving = true;
-                            canDragDown = false;
-                            hidePressedDrawables();
-                        }
-
-                        moveStartX = ev.getX();
-                        moveStartY = ev.getY();
-                        updateMinMax(scale);
-                        if (translationX < minX && (currentEditMode != EDIT_MODE_NONE || !rightImage.hasImageSet()) || translationX > maxX && (currentEditMode != EDIT_MODE_NONE || !leftImage.hasImageSet())) {
-                            moveDx /= 3.0f;
-                        }
-                        if (maxY == 0 && minY == 0 && currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER) {
-                            if (translationY - moveDy < minY) {
-                                translationY = minY;
-                                moveDy = 0;
-                            } else if (translationY - moveDy > maxY) {
-                                translationY = maxY;
-                                moveDy = 0;
-                            }
+                        if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo) && scale == 1 && currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_STICKER) {
+                            // Video player gestures enabled: prevent gallery page sliding
                         } else {
-                            if (translationY < minY || translationY > maxY) {
-                                moveDy /= 3.0f;
+                            if (!moving) {
+                                moveDx = 0;
+                                moveDy = 0;
+                                moving = true;
+                                canDragDown = false;
+                                hidePressedDrawables();
                             }
-                        }
 
-                        translationX -= moveDx;
-                        if (scale != 1 || currentEditMode != EDIT_MODE_NONE || sendPhotoType == SELECT_TYPE_STICKER) {
-                            translationY -= moveDy;
+                            moveStartX = ev.getX();
+                            moveStartY = ev.getY();
+                            updateMinMax(scale);
+                            if (translationX < minX && (currentEditMode != EDIT_MODE_NONE || !rightImage.hasImageSet()) || translationX > maxX && (currentEditMode != EDIT_MODE_NONE || !leftImage.hasImageSet())) {
+                                moveDx /= 3.0f;
+                            }
+                            if (maxY == 0 && minY == 0 && currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER) {
+                                if (translationY - moveDy < minY) {
+                                    translationY = minY;
+                                    moveDy = 0;
+                                } else if (translationY - moveDy > maxY) {
+                                    translationY = maxY;
+                                    moveDy = 0;
+                                }
+                            } else {
+                                if (translationY < minY || translationY > maxY) {
+                                    moveDy /= 3.0f;
+                                }
+                            }
+
+                            translationX -= moveDx;
+                            if (scale != 1 || currentEditMode != EDIT_MODE_NONE || sendPhotoType == SELECT_TYPE_STICKER) {
+                                translationY -= moveDy;
+                            }
+                            invalidateBlur();
+                            containerView.invalidate();
                         }
-                        invalidateBlur();
-                        containerView.invalidate();
                     }
                 } else {
                     invalidCoords = false;
@@ -19692,14 +19704,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 float moveToY = translationY;
                 updateMinMax(scale);
                 moving = false;
-                canDragDown = true;
+                canDragDown = !tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo);
                 float velocity = 0;
                 if (velocityTracker != null && scale == 1) {
                     velocityTracker.computeCurrentVelocity(1000);
                     velocity = velocityTracker.getXVelocity();
                 }
 
-                if (currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER) {
+                if (currentEditMode == EDIT_MODE_NONE && sendPhotoType != SELECT_TYPE_AVATAR && sendPhotoType != SELECT_TYPE_STICKER && !tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo)) {
                     if ((translationX < minX - getContainerViewWidth() / 3 || velocity < -dp(650)) && rightImage.hasImageSet()) {
                         goToNext();
                         return true;
@@ -24020,6 +24032,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
+            if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isGestureActive()) {
+                return true;
+            }
             return isVisible && PhotoViewer.this.onTouchEvent(event);
         }
 

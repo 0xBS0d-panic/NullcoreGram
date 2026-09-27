@@ -48,7 +48,11 @@ public class VideoGesturesHelper {
     private static GesturesOverlayView overlayView;
 
     public static boolean isVideoGesturesAvailable(PhotoViewer photoViewer, boolean isCurrentVideo) {
-        return photoViewer != null && NekoConfig.videoPlayerGestures.Bool() && isCurrentVideo && photoViewer.getVideoPlayer() != null;
+        return photoViewer != null && NekoConfig.videoPlayerGestures.Bool() && isCurrentVideo;
+    }
+
+    public static boolean isGestureActive() {
+        return gestureActive;
     }
 
     public static boolean onDispatchTouchEvent(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, boolean isCurrentVideo) {
@@ -57,10 +61,6 @@ public class VideoGesturesHelper {
         }
 
         VideoPlayer player = photoViewer.getVideoPlayer();
-        if (player == null) {
-            return false;
-        }
-
         int action = ev.getActionMasked();
 
         switch (action) {
@@ -68,7 +68,7 @@ public class VideoGesturesHelper {
                 float rx = ev.getRawX();
                 float ry = ev.getRawY();
 
-                if (isHitTopBar(ry) || isHitBottomBar(photoViewer, windowView, ry) || isHitInteractive(windowView, rx, ry, overlayView)) {
+                if (isHitTopBar(photoViewer, ry) || isHitBottomBar(photoViewer, windowView, ry)) {
                     isDownInVideo = false;
                     currentGesture = GESTURE_NONE;
                     gestureActive = false;
@@ -103,7 +103,11 @@ public class VideoGesturesHelper {
                     }
                 }
 
-                initialPosition = player.getCurrentPosition();
+                if (player != null) {
+                    initialPosition = player.getCurrentPosition();
+                } else {
+                    initialPosition = 0;
+                }
                 return false;
             }
 
@@ -120,17 +124,17 @@ public class VideoGesturesHelper {
 
                 if (!gestureActive) {
                     if (absDx > threshold || absDy > threshold) {
-                        if (absDx > absDy * 1.2f) {
-                            if (player.getDuration() > 0) {
+                        if (absDx > absDy) {
+                            if (player != null && player.getDuration() > 0) {
                                 currentGesture = GESTURE_SEEK;
                                 gestureActive = true;
                             }
-                        } else if (absDy > absDx * 1.2f) {
+                        } else {
                             int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
-                            if (downX < screenWidth * 0.45f) {
+                            if (downX < screenWidth * 0.5f) {
                                 currentGesture = GESTURE_BRIGHTNESS;
                                 gestureActive = true;
-                            } else if (downX > screenWidth * 0.55f) {
+                            } else {
                                 currentGesture = GESTURE_VOLUME;
                                 gestureActive = true;
                             }
@@ -188,16 +192,18 @@ public class VideoGesturesHelper {
                     }
                     return true;
                 } else if (currentGesture == GESTURE_SEEK) {
-                    long duration = player.getDuration();
-                    if (duration > 0) {
-                        long deltaMs = (long) ((dx / (float) screenWidth) * 90000L);
-                        targetSeekPosition = Math.max(0, Math.min(duration, initialPosition + deltaMs));
-                        long diffSec = (targetSeekPosition - initialPosition) / 1000;
-                        String sign = diffSec >= 0 ? "+" : "";
-                        String diffStr = sign + diffSec + "s";
-                        String timeStr = AndroidUtilities.formatShortDuration((int) (targetSeekPosition / 1000)) +
-                                " / " + AndroidUtilities.formatShortDuration((int) (duration / 1000));
-                        overlayView.showSeek(diffStr, timeStr, diffSec >= 0);
+                    if (player != null) {
+                        long duration = player.getDuration();
+                        if (duration > 0) {
+                            long deltaMs = (long) ((dx / (float) screenWidth) * 90000L);
+                            targetSeekPosition = Math.max(0, Math.min(duration, initialPosition + deltaMs));
+                            long diffSec = (targetSeekPosition - initialPosition) / 1000;
+                            String sign = diffSec >= 0 ? "+" : "";
+                            String diffStr = sign + diffSec + "s";
+                            String timeStr = AndroidUtilities.formatShortDuration((int) (targetSeekPosition / 1000)) +
+                                    " / " + AndroidUtilities.formatShortDuration((int) (duration / 1000));
+                            overlayView.showSeek(diffStr, timeStr, diffSec >= 0);
+                        }
                     }
                     return true;
                 }
@@ -207,7 +213,7 @@ public class VideoGesturesHelper {
             case MotionEvent.ACTION_UP: {
                 isDownInVideo = false;
                 if (gestureActive) {
-                    if (currentGesture == GESTURE_SEEK && targetSeekPosition >= 0) {
+                    if (currentGesture == GESTURE_SEEK && targetSeekPosition >= 0 && player != null) {
                         player.seekTo(targetSeekPosition);
                     }
                     if (overlayView != null) {
@@ -237,41 +243,17 @@ public class VideoGesturesHelper {
         return false;
     }
 
-    private static boolean isHitTopBar(float ry) {
-        return ry < (AndroidUtilities.statusBarHeight + AndroidUtilities.dp(64));
-    }
-
-    private static boolean isHitBottomBar(PhotoViewer photoViewer, FrameLayout windowView, float ry) {
-        if (photoViewer.isVideoPlayerControlVisible()) {
-            int bottomThreshold = windowView.getHeight() - AndroidUtilities.dp(96);
-            return ry > bottomThreshold;
+    private static boolean isHitTopBar(PhotoViewer photoViewer, float ry) {
+        if (photoViewer != null && photoViewer.isActionBarVisible()) {
+            return ry < (AndroidUtilities.statusBarHeight + AndroidUtilities.dp(56));
         }
         return false;
     }
 
-    private static boolean isHitInteractive(View view, float rx, float ry, View exclude) {
-        if (view == null || view == exclude || view.getVisibility() != View.VISIBLE) {
-            return false;
-        }
-        if (view.isClickable() || view.isLongClickable()) {
-            int[] location = new int[2];
-            view.getLocationOnScreen(location);
-            int x = location[0];
-            int y = location[1];
-            int w = view.getWidth();
-            int h = view.getHeight();
-            if (rx >= x && rx <= x + w && ry >= y && ry <= y + h) {
-                return true;
-            }
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) view;
-            for (int i = vg.getChildCount() - 1; i >= 0; i--) {
-                View child = vg.getChildAt(i);
-                if (isHitInteractive(child, rx, ry, exclude)) {
-                    return true;
-                }
-            }
+    private static boolean isHitBottomBar(PhotoViewer photoViewer, FrameLayout windowView, float ry) {
+        if (photoViewer != null && photoViewer.isVideoPlayerControlVisible()) {
+            int h = windowView != null && windowView.getHeight() > 0 ? windowView.getHeight() : AndroidUtilities.displaySize.y;
+            return ry > (h - AndroidUtilities.dp(96));
         }
         return false;
     }
