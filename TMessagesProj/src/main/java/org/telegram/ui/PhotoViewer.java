@@ -439,6 +439,14 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return videoTextureView;
     }
 
+    public boolean isActionBarVisible() {
+        return isActionBarVisible;
+    }
+
+    public boolean isVideoPlayerControlVisible() {
+        return videoPlayerControlVisible;
+    }
+
     public boolean isVisibleOrAnimating() {
         return isVisibleOrAnimating;
     }
@@ -19320,9 +19328,6 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     Runnable longPressRunnable = this::onLongPress;
 
     private boolean onTouchEvent(MotionEvent ev) {
-        if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.onTouchEvent(this, ev, isCurrentVideo)) {
-            return true;
-        }
         lastX = ev.getX();
         if (currentEditMode == EDIT_MODE_PAINT && animationStartTime != 0 && (ev.getActionMasked() == MotionEvent.ACTION_DOWN || ev.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN)) {
             if (ev.getPointerCount() >= 2) {
@@ -24015,6 +24020,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
 
         @Override
         public boolean dispatchTouchEvent(MotionEvent ev) {
+            if (tw.nekomimi.nekogram.helpers.VideoGesturesHelper.onDispatchTouchEvent(PhotoViewer.this, this, ev, isCurrentVideo)) {
+                return true;
+            }
             if (videoPlayerControlVisible && isPlaying) {
                 switch (ev.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:

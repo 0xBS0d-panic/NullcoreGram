@@ -6,8 +6,10 @@ import android.graphics.Color;
 import android.media.AudioManager;
 import android.provider.Settings;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -32,17 +34,21 @@ public class VideoGesturesHelper {
     private static final int GESTURE_SEEK = 3;
 
     private static int currentGesture = GESTURE_NONE;
+    private static boolean gestureActive = false;
+    private static boolean isDownInVideo = false;
+
     private static float downX;
     private static float downY;
     private static float initialBrightness = 0.5f;
     private static int initialVolume = 0;
+    private static int maxVolume = 15;
     private static long initialPosition = 0;
-    private static long targetSeekPosition = 0;
+    private static long targetSeekPosition = -1;
 
     private static GesturesOverlayView overlayView;
 
-    public static boolean onTouchEvent(PhotoViewer photoViewer, MotionEvent ev, boolean isCurrentVideo) {
-        if (photoViewer == null || !NekoConfig.videoPlayerGestures.Bool() || !isCurrentVideo) {
+    public static boolean onDispatchTouchEvent(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, boolean isCurrentVideo) {
+        if (photoViewer == null || windowView == null || !NekoConfig.videoPlayerGestures.Bool() || !isCurrentVideo) {
             return false;
         }
 
@@ -55,10 +61,22 @@ public class VideoGesturesHelper {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
-                downX = ev.getRawX();
-                downY = ev.getRawY();
+                float rx = ev.getRawX();
+                float ry = ev.getRawY();
+
+                if (isHitTopBar(ry) || isHitBottomBar(photoViewer, windowView, ry) || isHitInteractive(windowView, rx, ry, overlayView)) {
+                    isDownInVideo = false;
+                    currentGesture = GESTURE_NONE;
+                    gestureActive = false;
+                    return false;
+                }
+
+                downX = rx;
+                downY = ry;
+                isDownInVideo = true;
                 currentGesture = GESTURE_NONE;
-                targetSeekPosition = 0;
+                gestureActive = false;
+                targetSeekPosition = -1;
 
                 Activity activity = photoViewer.getParentActivity();
                 if (activity != null) {
@@ -77,6 +95,7 @@ public class VideoGesturesHelper {
                     AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
                     if (am != null) {
                         initialVolume = am.getStreamVolume(AudioManager.STREAM_MUSIC);
+                        maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                     }
                 }
 
@@ -85,50 +104,63 @@ public class VideoGesturesHelper {
             }
 
             case MotionEvent.ACTION_MOVE: {
+                if (!isDownInVideo) {
+                    return false;
+                }
+
                 float dx = ev.getRawX() - downX;
                 float dy = ev.getRawY() - downY;
                 float absDx = Math.abs(dx);
                 float absDy = Math.abs(dy);
                 int threshold = AndroidUtilities.dp(16);
 
-                if (currentGesture == GESTURE_NONE) {
+                if (!gestureActive) {
                     if (absDx > threshold || absDy > threshold) {
-                        if (absDx > absDy * 1.3f) {
+                        if (absDx > absDy * 1.2f) {
                             if (player.getDuration() > 0) {
                                 currentGesture = GESTURE_SEEK;
+                                gestureActive = true;
                             }
-                        } else if (absDy > absDx * 1.3f) {
-                            int screenWidth = photoViewer.windowView != null && photoViewer.windowView.getWidth() > 0 ?
-                                    photoViewer.windowView.getWidth() : AndroidUtilities.displaySize.x;
+                        } else if (absDy > absDx * 1.2f) {
+                            int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
                             if (downX < screenWidth * 0.45f) {
                                 currentGesture = GESTURE_BRIGHTNESS;
+                                gestureActive = true;
                             } else if (downX > screenWidth * 0.55f) {
                                 currentGesture = GESTURE_VOLUME;
+                                gestureActive = true;
                             }
+                        }
+
+                        if (gestureActive) {
+                            try {
+                                windowView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            } catch (Exception ignored) {}
+
+                            cancelChildrenTouch(windowView);
+                            windowView.requestDisallowInterceptTouchEvent(true);
                         }
                     }
                 }
 
-                if (currentGesture == GESTURE_NONE) {
+                if (!gestureActive) {
                     return false;
                 }
 
-                ensureOverlay(photoViewer);
+                ensureOverlay(windowView);
                 if (overlayView == null) {
                     return false;
                 }
 
-                int screenHeight = photoViewer.windowView != null && photoViewer.windowView.getHeight() > 0 ?
-                        photoViewer.windowView.getHeight() : AndroidUtilities.displaySize.y;
-                int screenWidth = photoViewer.windowView != null && photoViewer.windowView.getWidth() > 0 ?
-                        photoViewer.windowView.getWidth() : AndroidUtilities.displaySize.x;
+                int screenHeight = windowView.getHeight() > 0 ? windowView.getHeight() : AndroidUtilities.displaySize.y;
+                int screenWidth = windowView.getWidth() > 0 ? windowView.getWidth() : AndroidUtilities.displaySize.x;
 
                 if (currentGesture == GESTURE_BRIGHTNESS) {
                     Activity activity = photoViewer.getParentActivity();
                     if (activity != null) {
                         Window window = activity.getWindow();
                         WindowManager.LayoutParams lp = window.getAttributes();
-                        float delta = (downY - ev.getRawY()) / (float) screenHeight;
+                        float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
                         float newBrightness = Math.max(0.01f, Math.min(1.0f, initialBrightness + delta));
                         lp.screenBrightness = newBrightness;
                         window.setAttributes(lp);
@@ -140,13 +172,12 @@ public class VideoGesturesHelper {
                     if (activity != null) {
                         AudioManager am = (AudioManager) activity.getSystemService(Context.AUDIO_SERVICE);
                         if (am != null) {
-                            int maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-                            float delta = (downY - ev.getRawY()) / (float) screenHeight;
-                            int newVol = Math.max(0, Math.min(maxVol, Math.round(initialVolume + delta * maxVol)));
+                            float delta = (downY - ev.getRawY()) / (float) (screenHeight * 0.85f);
+                            int newVol = Math.max(0, Math.min(maxVolume, Math.round(initialVolume + delta * maxVolume)));
                             try {
                                 am.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
                             } catch (Exception ignored) {}
-                            int percent = maxVol > 0 ? (int) ((newVol / (float) maxVol) * 100) : 0;
+                            int percent = maxVolume > 0 ? (int) ((newVol / (float) maxVolume) * 100) : 0;
                             overlayView.showVolume(percent, newVol == 0);
                         }
                     }
@@ -168,17 +199,31 @@ public class VideoGesturesHelper {
                 break;
             }
 
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL: {
-                if (currentGesture != GESTURE_NONE) {
+            case MotionEvent.ACTION_UP: {
+                isDownInVideo = false;
+                if (gestureActive) {
                     if (currentGesture == GESTURE_SEEK && targetSeekPosition >= 0) {
                         player.seekTo(targetSeekPosition);
                     }
                     if (overlayView != null) {
                         overlayView.dismiss();
                     }
+                    gestureActive = false;
                     currentGesture = GESTURE_NONE;
+                    targetSeekPosition = -1;
                     return true;
+                }
+                currentGesture = GESTURE_NONE;
+                break;
+            }
+
+            case MotionEvent.ACTION_CANCEL: {
+                isDownInVideo = false;
+                gestureActive = false;
+                currentGesture = GESTURE_NONE;
+                targetSeekPosition = -1;
+                if (overlayView != null) {
+                    overlayView.dismiss();
                 }
                 break;
             }
@@ -187,34 +232,106 @@ public class VideoGesturesHelper {
         return false;
     }
 
+    private static boolean isHitTopBar(float ry) {
+        return ry < (AndroidUtilities.statusBarHeight + AndroidUtilities.dp(64));
+    }
+
+    private static boolean isHitBottomBar(PhotoViewer photoViewer, FrameLayout windowView, float ry) {
+        if (photoViewer.isVideoPlayerControlVisible()) {
+            int bottomThreshold = windowView.getHeight() - AndroidUtilities.dp(96);
+            return ry > bottomThreshold;
+        }
+        return false;
+    }
+
+    private static boolean isHitInteractive(View view, float rx, float ry, View exclude) {
+        if (view == null || view == exclude || view.getVisibility() != View.VISIBLE) {
+            return false;
+        }
+        if (view.isClickable() || view.isLongClickable()) {
+            int[] location = new int[2];
+            view.getLocationOnScreen(location);
+            int x = location[0];
+            int y = location[1];
+            int w = view.getWidth();
+            int h = view.getHeight();
+            if (rx >= x && rx <= x + w && ry >= y && ry <= y + h) {
+                return true;
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            for (int i = vg.getChildCount() - 1; i >= 0; i--) {
+                View child = vg.getChildAt(i);
+                if (isHitInteractive(child, rx, ry, exclude)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void cancelChildrenTouch(ViewGroup viewGroup) {
+        long now = System.currentTimeMillis();
+        MotionEvent cancelEvent = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+        for (int i = 0; i < viewGroup.getChildCount(); i++) {
+            View child = viewGroup.getChildAt(i);
+            if (child != overlayView) {
+                try {
+                    child.dispatchTouchEvent(cancelEvent);
+                } catch (Exception ignored) {}
+            }
+        }
+        cancelEvent.recycle();
+    }
+
     public static void onReset() {
         currentGesture = GESTURE_NONE;
+        gestureActive = false;
+        isDownInVideo = false;
         if (overlayView != null) {
             overlayView.animate().cancel();
             overlayView.setVisibility(View.GONE);
+            if (overlayView.dimView != null) {
+                overlayView.dimView.setAlpha(0.0f);
+            }
         }
     }
 
-    private static void ensureOverlay(PhotoViewer photoViewer) {
-        if (photoViewer.windowView == null) {
+    private static void ensureOverlay(FrameLayout windowView) {
+        if (windowView == null) {
             return;
         }
-        if (overlayView == null || overlayView.getParent() != photoViewer.windowView) {
+        if (overlayView == null || overlayView.getParent() != windowView) {
             if (overlayView != null && overlayView.getParent() != null) {
-                ((FrameLayout) overlayView.getParent()).removeView(overlayView);
+                ((ViewGroup) overlayView.getParent()).removeView(overlayView);
             }
-            overlayView = new GesturesOverlayView(photoViewer.windowView.getContext());
-            photoViewer.windowView.addView(overlayView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
+            overlayView = new GesturesOverlayView(windowView.getContext());
+            windowView.addView(overlayView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         }
     }
 
     private static class GesturesOverlayView extends FrameLayout {
-        private final LinearLayout cardView;
-        private final ImageView iconView;
-        private final TextView primaryText;
-        private final TextView secondaryText;
-        private final FrameLayout progressBarContainer;
-        private final View progressBarFill;
+        private final View dimView;
+
+        private final LinearLayout brightnessCard;
+        private final ImageView brightnessIcon;
+        private final FrameLayout brightnessTrack;
+        private final View brightnessFill;
+        private final TextView brightnessText;
+
+        private final LinearLayout volumeCard;
+        private final ImageView volumeIcon;
+        private final FrameLayout volumeTrack;
+        private final View volumeFill;
+        private final TextView volumeText;
+
+        private final LinearLayout seekCard;
+        private final ImageView seekIcon;
+        private final TextView seekDiffText;
+        private final TextView seekTimeText;
+
+        private static final int TRACK_HEIGHT_DP = 130;
 
         public GesturesOverlayView(Context context) {
             super(context);
@@ -222,37 +339,99 @@ public class VideoGesturesHelper {
             setClickable(false);
             setFocusable(false);
 
-            cardView = new LinearLayout(context);
-            cardView.setOrientation(LinearLayout.VERTICAL);
-            cardView.setGravity(Gravity.CENTER);
-            cardView.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(16), 0xCC1A1A1A));
-            cardView.setPadding(AndroidUtilities.dp(20), AndroidUtilities.dp(16), AndroidUtilities.dp(20), AndroidUtilities.dp(16));
-            addView(cardView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
+            dimView = new View(context);
+            dimView.setBackgroundColor(Color.BLACK);
+            dimView.setAlpha(0.0f);
+            dimView.setClickable(false);
+            dimView.setFocusable(false);
+            addView(dimView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-            iconView = new ImageView(context);
-            iconView.setColorFilter(Color.WHITE);
-            cardView.addView(iconView, LayoutHelper.createLinear(36, 36, Gravity.CENTER_HORIZONTAL));
+            // Brightness Card (Left)
+            brightnessCard = new LinearLayout(context);
+            brightnessCard.setOrientation(LinearLayout.VERTICAL);
+            brightnessCard.setGravity(Gravity.CENTER_HORIZONTAL);
+            brightnessCard.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(18), 0xCC1A1A1A));
+            brightnessCard.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(14), AndroidUtilities.dp(10), AndroidUtilities.dp(14));
+            addView(brightnessCard, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.CENTER_VERTICAL, 24, 0, 0, 0));
 
-            primaryText = new TextView(context);
-            primaryText.setTextColor(Color.WHITE);
-            primaryText.setTextSize(17);
-            primaryText.setTypeface(AndroidUtilities.bold());
-            primaryText.setGravity(Gravity.CENTER);
-            cardView.addView(primaryText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
+            brightnessIcon = new ImageView(context);
+            brightnessIcon.setColorFilter(Color.WHITE);
+            brightnessIcon.setImageResource(R.drawable.msg_brightness_high);
+            brightnessCard.addView(brightnessIcon, LayoutHelper.createLinear(22, 22, Gravity.CENTER_HORIZONTAL));
 
-            secondaryText = new TextView(context);
-            secondaryText.setTextColor(0xAAFFFFFF);
-            secondaryText.setTextSize(13);
-            secondaryText.setGravity(Gravity.CENTER);
-            cardView.addView(secondaryText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 2, 0, 0));
+            brightnessTrack = new FrameLayout(context);
+            brightnessTrack.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(4), 0x44FFFFFF));
+            brightnessCard.addView(brightnessTrack, LayoutHelper.createLinear(8, TRACK_HEIGHT_DP, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
 
-            progressBarContainer = new FrameLayout(context);
-            progressBarContainer.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(2), 0x44FFFFFF));
-            cardView.addView(progressBarContainer, LayoutHelper.createLinear(100, 4, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
+            brightnessFill = new View(context);
+            brightnessFill.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(4), Color.WHITE));
+            brightnessTrack.addView(brightnessFill, LayoutHelper.createFrame(8, 0, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
 
-            progressBarFill = new View(context);
-            progressBarFill.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(2), Color.WHITE));
-            progressBarContainer.addView(progressBarFill, LayoutHelper.createFrame(0, 4, Gravity.LEFT | Gravity.CENTER_VERTICAL));
+            brightnessText = new TextView(context);
+            brightnessText.setTextColor(Color.WHITE);
+            brightnessText.setTextSize(12);
+            brightnessText.setTypeface(AndroidUtilities.bold());
+            brightnessText.setGravity(Gravity.CENTER);
+            brightnessCard.addView(brightnessText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
+
+            // Volume Card (Right)
+            volumeCard = new LinearLayout(context);
+            volumeCard.setOrientation(LinearLayout.VERTICAL);
+            volumeCard.setGravity(Gravity.CENTER_HORIZONTAL);
+            volumeCard.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(18), 0xCC1A1A1A));
+            volumeCard.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(14), AndroidUtilities.dp(10), AndroidUtilities.dp(14));
+            addView(volumeCard, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.END | Gravity.CENTER_VERTICAL, 0, 0, 24, 0));
+
+            volumeIcon = new ImageView(context);
+            volumeIcon.setColorFilter(Color.WHITE);
+            volumeIcon.setImageResource(R.drawable.volume_on);
+            volumeCard.addView(volumeIcon, LayoutHelper.createLinear(22, 22, Gravity.CENTER_HORIZONTAL));
+
+            volumeTrack = new FrameLayout(context);
+            volumeTrack.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(4), 0x44FFFFFF));
+            volumeCard.addView(volumeTrack, LayoutHelper.createLinear(8, TRACK_HEIGHT_DP, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
+
+            volumeFill = new View(context);
+            volumeFill.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(4), Color.WHITE));
+            volumeTrack.addView(volumeFill, LayoutHelper.createFrame(8, 0, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+
+            volumeText = new TextView(context);
+            volumeText.setTextColor(Color.WHITE);
+            volumeText.setTextSize(12);
+            volumeText.setTypeface(AndroidUtilities.bold());
+            volumeText.setGravity(Gravity.CENTER);
+            volumeCard.addView(volumeText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 8, 0, 0));
+
+            // Seek Card (Center)
+            seekCard = new LinearLayout(context);
+            seekCard.setOrientation(LinearLayout.VERTICAL);
+            seekCard.setGravity(Gravity.CENTER);
+            seekCard.setBackground(Theme.createRoundRectDrawable(AndroidUtilities.dp(16), 0xDD1A1A1A));
+            seekCard.setPadding(AndroidUtilities.dp(22), AndroidUtilities.dp(14), AndroidUtilities.dp(22), AndroidUtilities.dp(14));
+            addView(seekCard, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
+
+            LinearLayout seekTopRow = new LinearLayout(context);
+            seekTopRow.setOrientation(LinearLayout.HORIZONTAL);
+            seekTopRow.setGravity(Gravity.CENTER_VERTICAL);
+            seekCard.addView(seekTopRow, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
+
+            seekIcon = new ImageView(context);
+            seekIcon.setColorFilter(Color.WHITE);
+            seekIcon.setImageResource(R.drawable.forwardvideo);
+            seekTopRow.addView(seekIcon, LayoutHelper.createLinear(28, 28, Gravity.CENTER_VERTICAL));
+
+            seekDiffText = new TextView(context);
+            seekDiffText.setTextColor(Color.WHITE);
+            seekDiffText.setTextSize(20);
+            seekDiffText.setTypeface(AndroidUtilities.bold());
+            seekDiffText.setGravity(Gravity.CENTER_VERTICAL);
+            seekTopRow.addView(seekDiffText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
+
+            seekTimeText = new TextView(context);
+            seekTimeText.setTextColor(0xAAFFFFFF);
+            seekTimeText.setTextSize(14);
+            seekTimeText.setGravity(Gravity.CENTER);
+            seekCard.addView(seekTimeText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 6, 0, 0));
         }
 
         public void showBrightness(int percent) {
@@ -260,14 +439,24 @@ public class VideoGesturesHelper {
             setAlpha(1.0f);
             setVisibility(View.VISIBLE);
 
-            iconView.setImageResource(percent < 40 ? R.drawable.msg_brightness_low : R.drawable.msg_brightness_high);
-            primaryText.setText(percent + "%");
-            secondaryText.setVisibility(View.GONE);
-            progressBarContainer.setVisibility(View.VISIBLE);
+            brightnessCard.setVisibility(View.VISIBLE);
+            volumeCard.setVisibility(View.GONE);
+            seekCard.setVisibility(View.GONE);
 
-            int width = Math.max(0, Math.min(AndroidUtilities.dp(100), (int) (AndroidUtilities.dp(100) * (percent / 100.0f))));
-            progressBarFill.getLayoutParams().width = width;
-            progressBarFill.requestLayout();
+            brightnessIcon.setImageResource(percent < 40 ? R.drawable.msg_brightness_low : R.drawable.msg_brightness_high);
+            brightnessText.setText(percent + "%");
+
+            int maxPx = AndroidUtilities.dp(TRACK_HEIGHT_DP);
+            int fillHeight = Math.max(AndroidUtilities.dp(6), Math.min(maxPx, (int) (maxPx * (percent / 100.0f))));
+            brightnessFill.getLayoutParams().height = fillHeight;
+            brightnessFill.requestLayout();
+
+            if (percent < 50) {
+                float dimAlpha = ((50 - percent) / 50.0f) * 0.4f;
+                dimView.setAlpha(dimAlpha);
+            } else {
+                dimView.setAlpha(0.0f);
+            }
         }
 
         public void showVolume(int percent, boolean isMute) {
@@ -275,14 +464,18 @@ public class VideoGesturesHelper {
             setAlpha(1.0f);
             setVisibility(View.VISIBLE);
 
-            iconView.setImageResource(isMute ? R.drawable.volume_off : R.drawable.volume_on);
-            primaryText.setText(percent + "%");
-            secondaryText.setVisibility(View.GONE);
-            progressBarContainer.setVisibility(View.VISIBLE);
+            volumeCard.setVisibility(View.VISIBLE);
+            brightnessCard.setVisibility(View.GONE);
+            seekCard.setVisibility(View.GONE);
+            dimView.setAlpha(0.0f);
 
-            int width = Math.max(0, Math.min(AndroidUtilities.dp(100), (int) (AndroidUtilities.dp(100) * (percent / 100.0f))));
-            progressBarFill.getLayoutParams().width = width;
-            progressBarFill.requestLayout();
+            volumeIcon.setImageResource(isMute ? R.drawable.volume_off : R.drawable.volume_on);
+            volumeText.setText(percent + "%");
+
+            int maxPx = AndroidUtilities.dp(TRACK_HEIGHT_DP);
+            int fillHeight = Math.max(AndroidUtilities.dp(6), Math.min(maxPx, (int) (maxPx * (percent / 100.0f))));
+            volumeFill.getLayoutParams().height = fillHeight;
+            volumeFill.requestLayout();
         }
 
         public void showSeek(String diffText, String timeText, boolean forward) {
@@ -290,12 +483,14 @@ public class VideoGesturesHelper {
             setAlpha(1.0f);
             setVisibility(View.VISIBLE);
 
-            iconView.setImageResource(R.drawable.forwardvideo);
-            iconView.setScaleX(forward ? 1.0f : -1.0f);
-            primaryText.setText(diffText);
-            secondaryText.setText(timeText);
-            secondaryText.setVisibility(View.VISIBLE);
-            progressBarContainer.setVisibility(View.GONE);
+            seekCard.setVisibility(View.VISIBLE);
+            brightnessCard.setVisibility(View.GONE);
+            volumeCard.setVisibility(View.GONE);
+            dimView.setAlpha(0.0f);
+
+            seekIcon.setScaleX(forward ? 1.0f : -1.0f);
+            seekDiffText.setText(diffText);
+            seekTimeText.setText(timeText);
         }
 
         public void dismiss() {
@@ -303,8 +498,11 @@ public class VideoGesturesHelper {
             animate()
                     .alpha(0.0f)
                     .setDuration(250)
-                    .setStartDelay(500)
-                    .withEndAction(() -> setVisibility(View.GONE))
+                    .setStartDelay(650)
+                    .withEndAction(() -> {
+                        setVisibility(View.GONE);
+                        dimView.setAlpha(0.0f);
+                    })
                     .start();
         }
     }
