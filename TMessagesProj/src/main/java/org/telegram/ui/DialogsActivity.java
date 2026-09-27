@@ -2942,6 +2942,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             currentConnectionState = getConnectionsManager().getConnectionState();
 
             globalObserversGroup.add(NotificationCenter.emojiLoaded);
+            globalObserversGroup.add(NotificationCenter.mainUserInfoChanged);
             if (!onlySelect) {
                 globalObserversGroup.add(NotificationCenter.closeSearchByActiveAction);
                 globalObserversGroup.add(NotificationCenter.proxySettingsChanged);
@@ -3964,23 +3965,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
         }
 
-        if (allowSwitchAccount && HiddenAccountsHelper.getVisibleActivatedAccountsCount() > 1) {
-            switchItem = menu.addItemWithWidth(11, 0, dp(56));
-            AvatarDrawable avatarDrawable = new AvatarDrawable();
-            avatarDrawable.setTextSize(dp(12));
-
-            BackupImageView imageView = new BackupImageView(context);
-            imageView.setRoundRadius(dp(18));
-            switchItem.addView(imageView, LayoutHelper.createFrame(36, 36, Gravity.CENTER));
-            switchItem.setOnClickListener(this::openAccountSelector);
-            switchItem.setOnLongClickListener(this::openAccountSelector);
-
-            TLRPC.User user = getUserConfig().getCurrentUser();
-            avatarDrawable.setInfo(currentAccount, user);
-            imageView.getImageReceiver().setCurrentAccount(currentAccount);
-            Drawable thumb = user != null && user.photo != null && user.photo.strippedBitmap != null ? user.photo.strippedBitmap : avatarDrawable;
-            imageView.setImage(ImageLocation.getForUserOrChat(currentAccount, user, ImageLocation.TYPE_SMALL), "50_50", ImageLocation.getForUserOrChat(user, ImageLocation.TYPE_STRIPPED), "50_50", thumb, user);
-        }
+        updateSwitchItem();
 
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -10753,6 +10738,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateVisibleRows(0);
         } else if (id == NotificationCenter.dialogsUnreadReactionsCounterChanged) {
             updateVisibleRows(0);
+        } else if (id == NotificationCenter.mainUserInfoChanged) {
+            updateSwitchItem();
         } else if (id == NotificationCenter.emojiLoaded) {
             if (viewPages != null) {
                 for (int i = 0; i < viewPages.length; ++i) {
@@ -14604,6 +14591,56 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         btn.addView(textView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL, 13, 0, 14, 0));
 
         return btn;
+    }
+
+    public void updateSwitchItem() {
+        if (!allowSwitchAccount || actionBar == null) {
+            return;
+        }
+        int visibleAccounts = HiddenAccountsHelper.getVisibleActivatedAccountsCount();
+        if (visibleAccounts > 1) {
+            if (switchItem == null) {
+                ActionBarMenu menu = actionBar.createMenu();
+                if (menu != null) {
+                    switchItem = menu.addItemWithWidth(11, 0, dp(56));
+                    AvatarDrawable avatarDrawable = new AvatarDrawable();
+                    avatarDrawable.setTextSize(dp(12));
+
+                    BackupImageView imageView = new BackupImageView(getParentActivity() != null ? getParentActivity() : ApplicationLoader.applicationContext);
+                    imageView.setRoundRadius(dp(18));
+                    switchItem.addView(imageView, LayoutHelper.createFrame(36, 36, Gravity.CENTER));
+                    switchItem.setOnClickListener(this::openAccountSelector);
+                    switchItem.setOnLongClickListener(this::openAccountSelector);
+
+                    TLRPC.User user = getUserConfig().getCurrentUser();
+                    avatarDrawable.setInfo(currentAccount, user);
+                    imageView.getImageReceiver().setCurrentAccount(currentAccount);
+                    Drawable thumb = user != null && user.photo != null && user.photo.strippedBitmap != null ? user.photo.strippedBitmap : avatarDrawable;
+                    imageView.setImage(ImageLocation.getForUserOrChat(currentAccount, user, ImageLocation.TYPE_SMALL), "50_50", ImageLocation.getForUserOrChat(user, ImageLocation.TYPE_STRIPPED), "50_50", thumb, user);
+                }
+            } else {
+                switchItem.setVisibility(View.VISIBLE);
+                BackupImageView imageView = null;
+                for (int i = 0; i < switchItem.getChildCount(); i++) {
+                    View v = switchItem.getChildAt(i);
+                    if (v instanceof BackupImageView) {
+                        imageView = (BackupImageView) v;
+                        break;
+                    }
+                }
+                if (imageView != null) {
+                    TLRPC.User user = getUserConfig().getCurrentUser();
+                    AvatarDrawable avatarDrawable = new AvatarDrawable();
+                    avatarDrawable.setTextSize(dp(12));
+                    avatarDrawable.setInfo(currentAccount, user);
+                    imageView.getImageReceiver().setCurrentAccount(currentAccount);
+                    Drawable thumb = user != null && user.photo != null && user.photo.strippedBitmap != null ? user.photo.strippedBitmap : avatarDrawable;
+                    imageView.setImage(ImageLocation.getForUserOrChat(currentAccount, user, ImageLocation.TYPE_SMALL), "50_50", ImageLocation.getForUserOrChat(user, ImageLocation.TYPE_STRIPPED), "50_50", thumb, user);
+                }
+            }
+        } else if (switchItem != null) {
+            switchItem.setVisibility(View.GONE);
+        }
     }
 
     private boolean openAccountSelector(View view) {

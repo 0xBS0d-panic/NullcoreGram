@@ -236,6 +236,7 @@ public class HiddenAccountsHelper {
     public static void revealAccounts(BaseFragment fragment) {
         accountsRevealed = true;
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.mainUserInfoChanged);
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_ALL);
         if (fragment != null) {
             BulletinFactory.of(fragment).createSimpleBulletin(R.drawable.menu_unlock, LocaleController.getString("HiddenAccountsRevealed", R.string.HiddenAccountsRevealed)).show();
         }
@@ -251,6 +252,7 @@ public class HiddenAccountsHelper {
             }
         }
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.mainUserInfoChanged);
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.updateInterfaces, MessagesController.UPDATE_MASK_ALL);
         if (fragment != null) {
             BulletinFactory.of(fragment).createSimpleBulletin(R.drawable.msg_secret, LocaleController.getString("HiddenAccountsHidden", R.string.HiddenAccountsHidden)).show();
         }

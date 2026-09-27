@@ -102,6 +102,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
         getNotificationCenter().addObserver(this, NotificationCenter.privacyRulesUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().addObserver(this, NotificationCenter.updatedChatbot);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.mainUserInfoChanged);
         getContactsController().loadPrivacySettings();
         BusinessChatbotController.getInstance(currentAccount).load(null);
         return super.onFragmentCreate();
@@ -113,6 +114,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
         getNotificationCenter().removeObserver(this, NotificationCenter.privacyRulesUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().removeObserver(this, NotificationCenter.updatedChatbot);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.mainUserInfoChanged);
         super.onFragmentDestroy();
         if (!wasSaved) {
             processDone(false);
@@ -567,6 +569,11 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
             final TL_account.connectedBots bots = BusinessChatbotController.getInstance(currentAccount).getValue();
             this.bots = bots != null && bots.connected_bots != null ? bots.connected_bots : new ArrayList<>();
             if (listView != null) {
+                listView.adapter.update(true);
+            }
+        } else if (id == NotificationCenter.mainUserInfoChanged) {
+            updateAccounts();
+            if (listView != null && listView.adapter != null) {
                 listView.adapter.update(true);
             }
         }

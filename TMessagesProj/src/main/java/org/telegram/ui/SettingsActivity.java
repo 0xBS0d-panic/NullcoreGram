@@ -224,6 +224,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().addObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().addObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().addObserver(this, NotificationCenter.newSuggestionsAvailable);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.mainUserInfoChanged);
 
         if (arguments != null) {
             hasMainTabs = arguments.getBoolean("hasMainTabs", false);
@@ -531,6 +532,7 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
         getNotificationCenter().removeObserver(this, NotificationCenter.updateInterfaces);
         getNotificationCenter().removeObserver(this, NotificationCenter.starBalanceUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.newSuggestionsAvailable);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.mainUserInfoChanged);
     }
 
     @Override
@@ -544,6 +546,11 @@ public class SettingsActivity extends BaseFragment implements NotificationCenter
             setInfo();
         } else if (id == NotificationCenter.newSuggestionsAvailable) {
             if (listView != null) {
+                listView.adapter.update(true);
+            }
+        } else if (id == NotificationCenter.mainUserInfoChanged) {
+            setInfo();
+            if (listView != null && listView.adapter != null) {
                 listView.adapter.update(true);
             }
         }

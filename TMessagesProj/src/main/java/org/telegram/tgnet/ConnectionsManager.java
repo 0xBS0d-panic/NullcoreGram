@@ -282,7 +282,7 @@ public class ConnectionsManager extends BaseController {
         if (getUserConfig().getCurrentUser() != null) {
             userPremium = getUserConfig().getCurrentUser().premium;
         }
-        init(BuildConfig.VERSION_CODE, TLRPC.LAYER, NekoXConfig.currentAppId(), deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
+        init(NekoXConfig.currentAppId() == BuildVars.OFFICAL_APP_ID ? BuildConfig.OFFICIAL_VERSION_CODE : BuildConfig.VERSION_CODE, TLRPC.LAYER, NekoXConfig.currentAppId(), deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
     }
 
     private String getRegId() {
@@ -768,7 +768,9 @@ public class ConnectionsManager extends BaseController {
 
         }
         if (apiId == BuildVars.OFFICAL_APP_ID) {
+            version = BuildConfig.OFFICIAL_VERSION_CODE;
             packageId = "org.telegram.messenger";
+            cFingerprint = "49c1522548ebacd46ce322b6fd47f6092bb745d0f88082145caf35e14dcc38e1";
         } else if (apiId == BuildConfig.APP_ID) {
             packageId = "xyz.nextalone.nagram";
         }

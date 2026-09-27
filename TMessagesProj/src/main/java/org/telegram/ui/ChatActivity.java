@@ -32025,7 +32025,8 @@ public class ChatActivity extends BaseFragment implements
             }
             if (selectedObject != null) {
                 ArrayList<Integer> needRemoveOptions = new ArrayList<>();
-                if (!NekoConfig.showShareMessages.Bool()) {
+                boolean hasMediaOrFile = selectedObject.isDocument() || selectedObject.isMusic() || selectedObject.isVideo() || selectedObject.isPhoto() || selectedObject.isVoice() || selectedObject.isRoundVideo();
+                if (!NekoConfig.showShareMessages.Bool() && !hasMediaOrFile) {
                     needRemoveOptions.add(OPTION_SHARE);
                 }
                 for (int i = options.size() - 1; i >= 0; i--) {
@@ -40878,11 +40879,11 @@ public class ChatActivity extends BaseFragment implements
         @Override
         public boolean canSaveRichDocument(ChatMessageCell cell) {
             final MessageObject messageObject = cell == null ? null : cell.getMessageObject();
+            boolean noforwards = (isPeerNoForwards() || (messageObject != null && messageObject.messageOwner != null && messageObject.messageOwner.noforwards)) && !NekoXConfig.disableFlagSecure && !NaConfig.INSTANCE.getForceCopy().Bool();
             return messageObject != null
                 && messageObject.messageOwner != null
                 && chatMode != MODE_SCHEDULED
-                && !isPeerNoForwards()
-                && !messageObject.messageOwner.noforwards
+                && !noforwards
                 && messageObject.type != MessageObject.TYPE_PAID_MEDIA;
         }
 

@@ -1142,6 +1142,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             if (tabs != null && tabs[INDEX_PROFILE] != null) {
                 tabs[INDEX_PROFILE].updateUserAvatar(currentAccount);
             }
+            if (dialogsActivity != null) {
+                dialogsActivity.updateSwitchItem();
+            }
         } else if (id == NotificationCenter.contactsPermissionBadgeCheck) {
             checkContactsTabBadge();
         }
