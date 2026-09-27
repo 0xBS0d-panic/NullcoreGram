@@ -83,6 +83,10 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
 
     @Override
     public void onResume() {
+        passcodeSet = SharedConfig.passcodeHash.length() > 0;
+        if (!passcodeSet) {
+            BulletinFactory.of(this).createErrorBulletin(LocaleController.getString("PasscodeNeeded", R.string.PasscodeNeeded)).show();
+        }
         loadAccounts();
         updateRows();
         super.onResume();
@@ -210,15 +214,6 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
         return PasscodeHelper.getSettingsKey();
     }
 
-    @Override
-    public void onResume() {
-        passcodeSet = SharedConfig.passcodeHash.length() > 0;
-        if (!passcodeSet) {
-            BulletinFactory.of(this).createErrorBulletin(LocaleController.getString("PasscodeNeeded", R.string.PasscodeNeeded)).show();
-        }
-        updateRows();
-        super.onResume();
-    }
 
     @Override
     protected void updateRows() {

@@ -47,6 +47,10 @@ public class VideoGesturesHelper {
 
     private static GesturesOverlayView overlayView;
 
+    public static boolean isVideoGesturesAvailable(PhotoViewer photoViewer, boolean isCurrentVideo) {
+        return photoViewer != null && NekoConfig.videoPlayerGestures.Bool() && isCurrentVideo && photoViewer.getVideoPlayer() != null;
+    }
+
     public static boolean onDispatchTouchEvent(PhotoViewer photoViewer, FrameLayout windowView, MotionEvent ev, boolean isCurrentVideo) {
         if (photoViewer == null || windowView == null || !NekoConfig.videoPlayerGestures.Bool() || !isCurrentVideo) {
             return false;
