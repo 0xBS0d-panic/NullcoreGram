@@ -1762,6 +1762,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int bot_settings = 31;
     private final static int call = 32;
     private final static int video_call = 33;
+    private final static int share_direct_file = 34;
 
     private final static int attach_photo = 0;
     private final static int attach_gallery = 1;
@@ -4156,6 +4157,23 @@ public class ChatActivity extends BaseFragment implements
                             BulletinFactory.of(ChatActivity.this).createDownloadBulletin(isMusic ? BulletinFactory.FileType.AUDIOS : BulletinFactory.FileType.UNKNOWNS, count, themeDelegate).show();
                         }
                     });
+                } else if (id == share_direct_file) {
+                    ArrayList<MessageObject> messageObjects = new ArrayList<>();
+                    for (int a = 1; a >= 0; a--) {
+                        for (int b = 0; b < selectedMessagesIds[a].size(); b++) {
+                            messageObjects.add(selectedMessagesIds[a].valueAt(b));
+                        }
+                        selectedMessagesIds[a].clear();
+                        selectedMessagesCanCopyIds[a].clear();
+                        selectedMessagesCanStarIds[a].clear();
+                    }
+                    hideActionMode();
+                    updatePinnedMessageView(true);
+                    updateVisibleRows();
+                    if (!messageObjects.isEmpty()) {
+                        MessageObject obj = messageObjects.get(0);
+                        shareFile(obj, obj.getDocument());
+                    }
                 } else if (id == chat_enc_timer) {
                     if (getParentActivity() == null) {
                         return;
@@ -9038,7 +9056,12 @@ public class ChatActivity extends BaseFragment implements
                                 chatInviteRunnable = null;
                             }
                             showBottomOverlayProgress(true, true);
-                            getMessagesController().addUserToChat(currentChat.id, getUserConfig().getCurrentUser(), 0, null, ChatActivity.this, null);
+                            getMessagesController().addUserToChat(currentChat.id, getUserConfig().getCurrentUser(), 0, null, ChatActivity.this, false, () -> {
+                                showBottomOverlayProgress(false, true);
+                            }, err -> {
+                                showBottomOverlayProgress(false, true);
+                                return true;
+                            });
                             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.closeSearchByActiveAction);
 
                             if (hasReportSpam() && reportSpamButton.getTag(R.id.object_tag) != null) {
@@ -10833,6 +10856,7 @@ public class ChatActivity extends BaseFragment implements
             }
             actionModeOtherItem.addSubItem(star, R.drawable.msg_fave, LocaleController.getString("AddToFavorites", R.string.AddToFavorites));
             actionModeOtherItem.addSubItem(save_to, R.drawable.msg_download, LocaleController.getString("SaveToMusic", R.string.SaveToMusic));
+            actionModeOtherItem.addSubItem(share_direct_file, R.drawable.msg_shareout, LocaleController.getString("ShareFile", R.string.ShareFile));
         }
 
         actionModeOtherItem.addSubItem(nkbtn_translate, R.drawable.ic_translate, LocaleController.getString("Translate", R.string.Translate));
@@ -19974,11 +19998,13 @@ public class ChatActivity extends BaseFragment implements
                 ActionBarMenuItem combineMessageItem = actionBar.createActionMode().getItem(combine_message);
 
                 ActionBarMenuSubItem saveToDownloadsItem = null;
+                ActionBarMenuSubItem shareDirectFileItem = null;
                 ActionBarMenuSubItem saveMessageItem = null;
                 ActionBarMenuSubItem forwardNoQuoteItem = null;
                 ActionBarMenuSubItem starItem = null;
                 if (actionModeOtherItem != null) {
                     saveToDownloadsItem = actionModeOtherItem.getSubItem(save_to);
+                    shareDirectFileItem = actionModeOtherItem.getSubItem(share_direct_file);
                     saveMessageItem = actionModeOtherItem.getSubItem(nkbtn_savemessage);
                     forwardNoQuoteItem = actionModeOtherItem.getSubItem(nkbtn_forward_noquote);
                     starItem = actionModeOtherItem.getSubItem(star);
@@ -20037,6 +20063,16 @@ public class ChatActivity extends BaseFragment implements
                 if (saveToDownloadsItem != null) {
                     saveToDownloadsItem.setVisibility(((canSaveMusicCount > 0 && canSaveDocumentsCount == 0) || (canSaveMusicCount == 0 && canSaveDocumentsCount > 0)) && cantSaveMessagesCount == 0 ? View.VISIBLE : View.GONE);
                     saveToDownloadsItem.setText(canSaveMusicCount > 0 ? LocaleController.getString(R.string.SaveToMusic) : LocaleController.getString(R.string.SaveToDownloads));
+                }
+                if (shareDirectFileItem != null) {
+                    boolean canShare = (canSaveMusicCount > 0 || canSaveDocumentsCount > 0) && cantSaveMessagesCount == 0;
+                    if (!canShare && selectedCount == 1) {
+                        MessageObject singleMsg = selectedMessagesIds[0].size() == 1 ? selectedMessagesIds[0].valueAt(0) : (selectedMessagesIds[1].size() == 1 ? selectedMessagesIds[1].valueAt(0) : null);
+                        if (singleMsg != null && (singleMsg.isPhoto() || singleMsg.isVideo() || singleMsg.isDocument() || singleMsg.isMusic())) {
+                            canShare = true;
+                        }
+                    }
+                    shareDirectFileItem.setVisibility(canShare ? View.VISIBLE : View.GONE);
                 }
 
                 int copyVisible = View.GONE, starVisible = View.GONE, newCopyVisible = View.GONE, newStarVisible = View.GONE;
@@ -35409,6 +35445,26 @@ public class ChatActivity extends BaseFragment implements
                 path = f.getPath();
             }
         }
+        if (TextUtils.isEmpty(path) && selectedObject != null && selectedObject.photoThumbs != null && !selectedObject.photoThumbs.isEmpty()) {
+            TLRPC.PhotoSize photoSize = FileLoader.getClosestPhotoSizeWithSize(selectedObject.photoThumbs, AndroidUtilities.getPhotoSize());
+            if (photoSize != null) {
+                File f = FileLoader.getInstance(currentAccount).getPathToAttach(photoSize, true);
+                if (f != null && f.exists()) {
+                    path = f.getPath();
+                }
+                if (TextUtils.isEmpty(path)) {
+                    f = FileLoader.getInstance(currentAccount).getPathToAttach(photoSize, false);
+                    if (f != null && f.exists()) {
+                        path = f.getPath();
+                    }
+                }
+                if (TextUtils.isEmpty(path)) {
+                    FileLoader.getInstance(currentAccount).loadFile(ImageLocation.getForObject(photoSize, selectedObject.photoThumbsObject), selectedObject, null, 0, 0);
+                    BulletinFactory.of(this).createDownloadBulletin(BulletinFactory.FileType.UNKNOWNS, 1, themeDelegate).show();
+                    return;
+                }
+            }
+        }
         if (TextUtils.isEmpty(path)) {
             if (document != null && selectedObject != null) {
                 FileLoader.getInstance(currentAccount).loadFile(document, selectedObject, 0, 0);
@@ -35419,7 +35475,11 @@ public class ChatActivity extends BaseFragment implements
         Intent intent = new Intent(Intent.ACTION_SEND);
         String mime = selectedObject != null ? selectedObject.getMimeType() : (document != null ? document.mime_type : "application/octet-stream");
         if (TextUtils.isEmpty(mime)) {
-            mime = "application/octet-stream";
+            if (selectedObject != null && selectedObject.isPhoto()) {
+                mime = "image/jpeg";
+            } else {
+                mime = "application/octet-stream";
+            }
         }
         intent.setType(mime);
         File f = new File(path);

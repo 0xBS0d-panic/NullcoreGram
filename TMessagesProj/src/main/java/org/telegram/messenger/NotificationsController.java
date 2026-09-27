@@ -58,7 +58,7 @@ import android.util.SparseArray;
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
 import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
 import androidx.core.content.FileProvider;
@@ -1785,7 +1785,7 @@ public class NotificationsController extends BaseController implements Notificat
     private int getTotalAllUnreadCount() {
         int count = 0;
         for (int a : SharedConfig.activeAccounts) {
-            if (PasscodeHelper.isAccountHidden(a)) {
+            if (HiddenAccountsHelper.isAccountHidden(a)) {
                 continue;
             }
             if (!UserConfig.getInstance(a).isClientActivated()) {
@@ -3385,7 +3385,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private void playInChatSound() {
-        if (PasscodeHelper.isAccountHidden(currentAccount) || !inChatSoundEnabled || MediaController.getInstance().isRecordingAudio()) {
+        if (HiddenAccountsHelper.isAccountHidden(currentAccount) || !inChatSoundEnabled || MediaController.getInstance().isRecordingAudio()) {
             return;
         }
         try {
@@ -4164,7 +4164,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     private void showOrUpdateNotification(boolean notifyAboutLast) {
-        if (!getUserConfig().isClientActivated() || pushMessages.isEmpty() && storyPushMessages.isEmpty() || (!SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) || PasscodeHelper.isAccountHidden(currentAccount)) {
+        if (!getUserConfig().isClientActivated() || pushMessages.isEmpty() && storyPushMessages.isEmpty() || (!SharedConfig.showNotificationsForAllAccounts && currentAccount != UserConfig.selectedAccount) || HiddenAccountsHelper.isAccountHidden(currentAccount)) {
             dismissNotification();
             return;
         }

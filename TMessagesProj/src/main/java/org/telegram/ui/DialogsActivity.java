@@ -158,7 +158,7 @@ import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Adapters.DialogsAdapter;
 import org.telegram.ui.Adapters.DialogsSearchAdapter;
 import org.telegram.ui.Adapters.FiltersView;
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
 import org.telegram.ui.Cells.ActiveGiftAuctionsHintCell;
 import org.telegram.ui.Cells.AnimatedStatusView;
 import org.telegram.ui.Cells.ArchiveHintInnerCell;
@@ -3642,8 +3642,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             actionBar.setCastShadows(false);
             actionBar.setClipContent(true);
         //}
+        actionBar.setTitleHold3SecondsRunnable(() -> {
+            HiddenAccountsHelper.onLogo3SecondsHeld(this);
+        });
         actionBar.setTitleActionRunnable(() -> {
-            PasscodeHelper.onTitleTapped(this);
             if (initialDialogsType != DIALOGS_TYPE_WIDGET) {
                 hideFloatingButton(false);
             }
@@ -3962,7 +3964,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             });
         }
 
-        if (allowSwitchAccount && UserConfig.getActivatedAccountsCount() > 1) {
+        if (allowSwitchAccount && HiddenAccountsHelper.getVisibleActivatedAccountsCount() > 1) {
             switchItem = menu.addItemWithWidth(11, 0, dp(56));
             AvatarDrawable avatarDrawable = new AvatarDrawable();
             avatarDrawable.setTextSize(dp(12));
@@ -14609,7 +14611,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (PasscodeHelper.isAccountHidden(a)) continue;
+            if (HiddenAccountsHelper.isAccountHidden(a)) continue;
             if (UserConfig.getInstance(a).isClientActivated()) {
                 accountNumbers.add(a);
             }

@@ -15932,33 +15932,7 @@ public class MessagesController extends BaseController implements NotificationCe
         final boolean isMegagroup = isChannel && chat != null && chat.megagroup;
         TLRPC.InputUser inputUser = getInputUser(user);
         final boolean isSelf = (inputUser instanceof TLRPC.TL_inputUserSelf) || (user != null && user.id == getUserConfig().getClientUserId()) || (user == null);
-        if (botHash == null || isChannel && !isMegagroup) {
-            if (isChannel) {
-                if (isSelf) {
-                    if (joiningToChannels.contains(chatId)) {
-                        if (onError != null) {
-                            onError.run(null);
-                        }
-                        return;
-                    }
-                    TLRPC.TL_channels_joinChannel req = new TLRPC.TL_channels_joinChannel();
-                    req.channel = getInputChannel(chatId);
-                    request = req;
-                    joiningToChannels.add(chatId);
-                } else {
-                    TLRPC.TL_channels_inviteToChannel req = new TLRPC.TL_channels_inviteToChannel();
-                    req.channel = getInputChannel(chatId);
-                    req.users.add(inputUser);
-                    request = req;
-                }
-            } else {
-                TLRPC.TL_messages_addChatUser req = new TLRPC.TL_messages_addChatUser();
-                req.chat_id = chatId;
-                req.fwd_limit = forwardCount;
-                req.user_id = inputUser;
-                request = req;
-            }
-        } else {
+        if (botHash != null && (!isChannel || isMegagroup)) {
             TLRPC.TL_messages_startBot req = new TLRPC.TL_messages_startBot();
             req.bot = inputUser;
             if (isChannel) {
@@ -15969,6 +15943,30 @@ public class MessagesController extends BaseController implements NotificationCe
             }
             req.start_param = botHash;
             req.random_id = Utilities.random.nextLong();
+            request = req;
+        } else if (isChannel) {
+            if (isSelf) {
+                if (joiningToChannels.contains(chatId)) {
+                    if (onError != null) {
+                        onError.run(null);
+                    }
+                    return;
+                }
+                TLRPC.TL_channels_joinChannel req = new TLRPC.TL_channels_joinChannel();
+                req.channel = chat != null ? getInputChannel(chat) : getInputChannel(chatId);
+                request = req;
+                joiningToChannels.add(chatId);
+            } else {
+                TLRPC.TL_channels_inviteToChannel req = new TLRPC.TL_channels_inviteToChannel();
+                req.channel = chat != null ? getInputChannel(chat) : getInputChannel(chatId);
+                req.users.add(inputUser);
+                request = req;
+            }
+        } else {
+            TLRPC.TL_messages_addChatUser req = new TLRPC.TL_messages_addChatUser();
+            req.chat_id = chatId;
+            req.fwd_limit = forwardCount;
+            req.user_id = inputUser;
             request = req;
         }
 

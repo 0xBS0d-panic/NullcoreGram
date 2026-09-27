@@ -71,7 +71,7 @@ import java.util.Calendar;
 import java.util.Collections;
 import java.util.Objects;
 
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
 
 public class UserInfoActivity extends UniversalFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -304,7 +304,7 @@ public class UserInfoActivity extends UniversalFragment implements NotificationC
     private void updateAccounts() {
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (PasscodeHelper.isAccountHidden(a)) continue;
+            if (HiddenAccountsHelper.isAccountHidden(a)) continue;
             if (UserConfig.getInstance(a).isClientActivated() && currentAccount != a) {
                 accountNumbers.add(a);
             }

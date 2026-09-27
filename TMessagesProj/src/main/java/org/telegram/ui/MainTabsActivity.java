@@ -90,7 +90,7 @@ import java.util.Collections;
 import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 import tw.nekomimi.nekogram.BackButtonMenuRecent;
-import tw.nekomimi.nekogram.helpers.PasscodeHelper;
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
 import xyz.nextalone.nagram.MainTabsStyle;
 import xyz.nextalone.nagram.NaConfig;
 
@@ -403,7 +403,6 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 }
 
                 if (viewPager.getCurrentPosition() == position) {
-                    PasscodeHelper.onTitleTapped(this);
                     final BaseFragment fragment = getCurrentVisibleFragment();
                     if (fragment instanceof MainTabsActivity.TabFragmentDelegate) {
                         ((MainTabsActivity.TabFragmentDelegate) fragment).onParentScrollToTop();
@@ -676,7 +675,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
         accountNumbers.clear();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
-            if (PasscodeHelper.isAccountHidden(a)) continue;
+            if (HiddenAccountsHelper.isAccountHidden(a)) continue;
             if (UserConfig.getInstance(a).isClientActivated()) {
                 accountNumbers.add(a);
             }

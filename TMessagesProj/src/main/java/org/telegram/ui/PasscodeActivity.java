@@ -1023,7 +1023,8 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 onPasscodeError();
                 return;
             }
-            if (!PasscodeHelper.checkPasscode(getParentActivity(), password) && !SharedConfig.checkPasscode(password)) {
+            boolean correct = account != -1 ? PasscodeHelper.checkPasscodeForAccount(password, account) : SharedConfig.checkPasscode(password);
+            if (!correct) {
                 SharedConfig.increaseBadPasscodeTries();
                 passwordEditText.setText("");
                 for (CodeNumberField f : codeFieldContainer.codeField) {

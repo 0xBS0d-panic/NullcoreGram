@@ -60,6 +60,7 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
     private int accountRow;
     private int chatRow;
     private int passcodeRow;
+    private int hiddenAccountsRow;
     private int experimentRow;
     private int ghostModeRow;
     private int debugRow;
@@ -102,6 +103,8 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
             presentFragment(new NekoChatSettingsActivity());
         } else if (position == passcodeRow) {
             presentFragment(new NekoPasscodeSettingsActivity());
+        } else if (position == hiddenAccountsRow) {
+            presentFragment(new NekoHiddenAccountsSettingsActivity());
         } else if (position == experimentRow) {
             presentFragment(new NekoExperimentalSettingsActivity());
         } else if (position == ghostModeRow) {
@@ -164,6 +167,7 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
         } else {
             passcodeRow = -1;
         }
+        hiddenAccountsRow = addRow("hiddenAccounts");
         experimentRow = addRow("experiment");
         ghostModeRow = addRow("ghostMode");
         debugRow = addRow("debug");
@@ -232,6 +236,8 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.Chat), R.drawable.msg_discussion, divider);
                     } else if (position == passcodeRow) {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.PasscodeNeko), R.drawable.msg_secret, divider);
+                    } else if (position == hiddenAccountsRow) {
+                        textCell.setTextAndIcon(LocaleController.getString("HiddenAccountsTitle", R.string.HiddenAccountsTitle), R.drawable.msg_secret, divider);
                     } else if (position == experimentRow) {
                         textCell.setTextAndIcon(LocaleController.getString(R.string.Experiment), R.drawable.msg_fave, divider);
                     } else if (position == ghostModeRow) {

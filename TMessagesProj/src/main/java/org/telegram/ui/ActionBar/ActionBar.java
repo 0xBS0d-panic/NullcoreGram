@@ -33,6 +33,9 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.VectorDrawable;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.HapticFeedbackConstants;
 import android.text.Layout;
 import android.text.SpannableString;
 import android.text.StaticLayout;
@@ -195,10 +198,36 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             if (isSearchFieldVisible()) {
                 return;
             }
+            if (titleHoldTriggered) {
+                titleHoldTriggered = false;
+                return;
+            }
             if (titleActionRunnable != null) {
                 titleActionRunnable.run();
             }
         });
+    }
+
+    private Runnable titleHold3SecondsRunnable;
+    private final Handler titleHoldHandler = new Handler(Looper.getMainLooper());
+    private boolean titleHoldTriggered = false;
+    private float titleTouchStartX, titleTouchStartY;
+    private final Runnable titleHoldTimerRunnable = () -> {
+        titleHoldTriggered = true;
+        try {
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        } catch (Exception ignore) {}
+        if (titleHold3SecondsRunnable != null) {
+            titleHold3SecondsRunnable.run();
+        }
+    };
+
+    public void setTitleHold3SecondsRunnable(Runnable runnable) {
+        titleHold3SecondsRunnable = runnable;
+    }
+
+    public Runnable getTitleActionRunnable() {
+        return titleActionRunnable;
     }
 
     private boolean glassMode;
@@ -1904,6 +1933,41 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (titleHold3SecondsRunnable != null && !isSearchFieldVisible()) {
+            switch (ev.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    View titleView = titlesContainer != null ? titlesContainer : (titleTextView != null ? titleTextView[0] : null);
+                    if (titleView != null && titleView.getVisibility() == VISIBLE) {
+                        Rect r = new Rect();
+                        titleView.getHitRect(r);
+                        r.inset(-AndroidUtilities.dp(24), -AndroidUtilities.dp(12));
+                        if (r.contains((int) ev.getX(), (int) ev.getY())) {
+                            titleTouchStartX = ev.getX();
+                            titleTouchStartY = ev.getY();
+                            titleHoldTriggered = false;
+                            titleHoldHandler.removeCallbacks(titleHoldTimerRunnable);
+                            titleHoldHandler.postDelayed(titleHoldTimerRunnable, 3000);
+                        }
+                    }
+                    break;
+                }
+                case MotionEvent.ACTION_MOVE: {
+                    if (Math.hypot(ev.getX() - titleTouchStartX, ev.getY() - titleTouchStartY) > AndroidUtilities.dp(16)) {
+                        titleHoldHandler.removeCallbacks(titleHoldTimerRunnable);
+                    }
+                    break;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL: {
+                    titleHoldHandler.removeCallbacks(titleHoldTimerRunnable);
+                    if (titleHoldTriggered) {
+                        titleHoldTriggered = false;
+                        return true;
+                    }
+                    break;
+                }
+            }
+        }
         if (chatAvatarContainer != null && glassMode) {
             if (ev.getAction() == MotionEvent.ACTION_DOWN) {
                 final int x = (int) ev.getX();
