@@ -245,7 +245,11 @@ public class ConnectionsManager extends BaseController {
             if (versionName.contains("-")) {
                 versionName = StrUtil.subBefore(versionName, "-", false);
             }
-            appVersion = versionName + " (" + BuildConfig.VERSION_CODE + ")";
+            if (NekoXConfig.currentAppId() == BuildVars.OFFICAL_APP_ID) {
+                appVersion = BuildConfig.OFFICIAL_VERSION + " (" + BuildConfig.OFFICIAL_VERSION_CODE + ")";
+            } else {
+                appVersion = versionName + " (" + BuildConfig.VERSION_CODE + ")";
+            }
             systemVersion = "SDK " + Build.VERSION.SDK_INT;
         } catch (Exception ignored) {
             systemLangCode = "en";
@@ -771,6 +775,8 @@ public class ConnectionsManager extends BaseController {
             version = BuildConfig.OFFICIAL_VERSION_CODE;
             packageId = "org.telegram.messenger";
             cFingerprint = "49c1522548ebacd46ce322b6fd47f6092bb745d0f88082145caf35e14dcc38e1";
+            appVersion = BuildConfig.OFFICIAL_VERSION + " (" + BuildConfig.OFFICIAL_VERSION_CODE + ")";
+            installer = "com.android.vending";
         } else if (apiId == BuildConfig.APP_ID) {
             packageId = "xyz.nextalone.nagram";
         }
