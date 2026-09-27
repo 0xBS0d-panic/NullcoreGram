@@ -29,3 +29,4 @@ TMessagesProj_AppHuawei/afat/
 # Keystore
 *.keystore
 TMessagesProj/jni/ffmpeg/build_android
+tdesktop/

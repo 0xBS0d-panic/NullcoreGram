@@ -32,9 +32,10 @@ import org.telegram.ui.PasscodeActivity;
 import java.util.ArrayList;
 import java.util.Locale;
 
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
 import tw.nekomimi.nekogram.helpers.PasscodeHelper;
 
-public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
+public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private boolean passcodeSet;
 
@@ -54,15 +55,48 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
     private final ArrayList<Integer> accounts = new ArrayList<>();
 
-    @Override
-    public boolean onFragmentCreate() {
+    private void loadAccounts() {
+        accounts.clear();
         for (int a : SharedConfig.activeAccounts) {
+            if (HiddenAccountsHelper.isAccountHidden(a)) {
+                continue;
+            }
             var u = AccountInstance.getInstance(a).getUserConfig().getCurrentUser();
             if (u != null) {
                 accounts.add(a);
             }
         }
+    }
+
+    @Override
+    public boolean onFragmentCreate() {
+        loadAccounts();
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.mainUserInfoChanged);
         return super.onFragmentCreate();
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.mainUserInfoChanged);
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public void onResume() {
+        loadAccounts();
+        updateRows();
+        super.onResume();
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.mainUserInfoChanged) {
+            loadAccounts();
+            updateRows();
+            if (listAdapter != null) {
+                listAdapter.notifyDataSetChanged();
+            }
+        }
     }
 
     @Override

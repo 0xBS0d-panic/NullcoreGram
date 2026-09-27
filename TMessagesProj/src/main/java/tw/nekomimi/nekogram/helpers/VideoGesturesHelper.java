@@ -137,6 +137,7 @@ public class VideoGesturesHelper {
                                 windowView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                             } catch (Exception ignored) {}
 
+                            photoViewer.cancelVideoGestures();
                             cancelChildrenTouch(windowView);
                             windowView.requestDisallowInterceptTouchEvent(true);
                         }

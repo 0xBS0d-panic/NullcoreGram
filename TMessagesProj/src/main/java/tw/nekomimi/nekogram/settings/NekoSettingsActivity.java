@@ -45,10 +45,12 @@ import tw.nekomimi.nekogram.utils.EnvUtil;
 import tw.nekomimi.nekogram.utils.FileUtil;
 import tw.nekomimi.nekogram.utils.GsonUtil;
 import tw.nekomimi.nekogram.utils.ShareUtil;
+import tw.nekomimi.nekogram.helpers.HiddenAccountsHelper;
+import org.telegram.messenger.NotificationCenter;
 import xyz.nextalone.nagram.NkmrConfig;
 import xyz.nextalone.nagram.network.NetworkLogActivity;
 
-public class NekoSettingsActivity extends BaseNekoSettingsActivity {
+public class NekoSettingsActivity extends BaseNekoSettingsActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private static final Set<String> EXCLUDED_NKMR_CONFIG_KEYS = new HashSet<>(Arrays.asList(
             "ExtendedFeatureUnlockedToken",
@@ -81,6 +83,37 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
     private int exportSettingsRow;
     private int resetSettingsRow;
     private int settings2Row;
+
+    @Override
+    public boolean onFragmentCreate() {
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.mainUserInfoChanged);
+        return super.onFragmentCreate();
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.mainUserInfoChanged);
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        updateRows();
+        if (listAdapter != null) {
+            listAdapter.notifyDataSetChanged();
+        }
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.mainUserInfoChanged) {
+            updateRows();
+            if (listAdapter != null) {
+                listAdapter.notifyDataSetChanged();
+            }
+        }
+    }
 
     @Override
     public View createView(Context context) {
@@ -167,7 +200,11 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
         } else {
             passcodeRow = -1;
         }
-        hiddenAccountsRow = addRow("hiddenAccounts");
+        if (!HiddenAccountsHelper.isFeatureEnabled() || HiddenAccountsHelper.isRevealed()) {
+            hiddenAccountsRow = addRow("hiddenAccounts");
+        } else {
+            hiddenAccountsRow = -1;
+        }
         experimentRow = addRow("experiment");
         ghostModeRow = addRow("ghostMode");
         debugRow = addRow("debug");

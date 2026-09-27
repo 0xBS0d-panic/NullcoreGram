@@ -451,6 +451,20 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return isVisibleOrAnimating;
     }
 
+    public void cancelVideoGestures() {
+        if (longPressRunnable != null) {
+            AndroidUtilities.cancelRunOnUIThread(longPressRunnable);
+        }
+        draggingDown = false;
+        canDragDown = false;
+        moving = false;
+        translationX = 0;
+        translationY = 0;
+        if (containerView != null) {
+            containerView.invalidate();
+        }
+    }
+
     public SurfaceView getVideoSurfaceView() {
         return videoSurfaceView;
     }
@@ -19451,7 +19465,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         moveStartX = ev.getX();
                         dragY = moveStartY = ev.getY();
                         draggingDown = false;
-                        canDragDown = true;
+                        canDragDown = !tw.nekomimi.nekogram.helpers.VideoGesturesHelper.isVideoGesturesAvailable(this, isCurrentVideo);
                         if (velocityTracker != null) {
                             velocityTracker.clear();
                         }

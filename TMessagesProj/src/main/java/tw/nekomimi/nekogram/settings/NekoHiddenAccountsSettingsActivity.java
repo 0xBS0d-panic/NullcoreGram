@@ -90,9 +90,13 @@ public class NekoHiddenAccountsSettingsActivity extends BaseNekoSettingsActivity
 
     @Override
     public void onResume() {
+        super.onResume();
+        if (HiddenAccountsHelper.isFeatureEnabled() && !HiddenAccountsHelper.isRevealed()) {
+            finishFragment();
+            return;
+        }
         loadAccounts();
         updateRows();
-        super.onResume();
     }
 
     @Override
@@ -178,6 +182,8 @@ public class NekoHiddenAccountsSettingsActivity extends BaseNekoSettingsActivity
         } else if (position == toggleVisibilityRow) {
             if (HiddenAccountsHelper.isRevealed()) {
                 HiddenAccountsHelper.hideAccounts(getParentActivity(), this);
+                finishFragment();
+                return;
             } else {
                 HiddenAccountsHelper.revealAccounts(this);
             }
